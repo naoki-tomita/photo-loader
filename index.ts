@@ -1,13 +1,15 @@
 import {
   readdirSync,
-  copyFileSync,
+  copyFile,
   mkdirSync,
   statSync,
+  constants,
 } from "fs";
 import { extname, join, basename } from "path";
 import * as argv from "argv";
 import { ExifImage, Exif } from "exif";
 import * as mkdirp from "mkdirp";
+import * as ProgressBar from "progress";
 
 argv.option([{
 	name: "src",
@@ -19,9 +21,19 @@ argv.option([{
 	short: "d",
 	type: "string",
 	description: "destination path",
+}, {
+  name: "ext",
+  short: "e",
+  type: "string",
+  description: "extension of copy file. joined by comma.",
+  example: `jpg,mov,png`,
 }]);
 
 const args = argv.run();
+const src = args.options.src;
+const exts: string[] = args.options.ext.split(",").map((e: string) => `.${e.toLowerCase()}`);
+const dst = args.options.dst;
+
 function findPhotos(src: string) {
   const files = findPhotoRecursively(src);
   return files;
@@ -34,7 +46,11 @@ function findPhotoRecursively(src: string) {
     const filePath = join(src, l);
     const stat = statSync(filePath);
     if (stat.isFile()) {
-      if (extname(filePath).toLowerCase() === ".jpg") {
+      // this file created by FlashAir.
+      if (src.includes("FA000001.JPG")) {
+        return;
+      }
+      if (exts.includes(extname(filePath).toLowerCase())) {
         dst.push(filePath);
       }
     } else {
@@ -44,48 +60,42 @@ function findPhotoRecursively(src: string) {
   return dst;
 }
 
-async function createExif(filePath: string) {
-  return new Promise<Exif>((ok, ng) => {
-    new ExifImage({
-      image: filePath
-    }, (error, exifData) => {
-      if (error) {
-        return ng(error);
-      }
-      return ok(exifData);
-    });
-  });
-}
-
-function parseDate(date: string) {
-  const regexed = /([\d]{4}):([\d]{2}):([\d]{2}) [\d]{2}:[\d]{2}:[\d]{2}/.exec(date);
-  if (!regexed) {
-    return "XXXX-YY-ZZ";
-  }
-  return `${regexed[1]}-${regexed[2]}-${regexed[3]}`;
-}
-
 async function mkdirpSync(path: string) {
   return new Promise(r => mkdirp(path, () => r()));
 }
 
-async function copy(path: string) {
-  console.log(`copying... ${path}`);
-  const exif = await createExif(path);
-  const date = parseDate(exif.exif.CreateDate);
-  await mkdirpSync(join(args.options.dst, date));
-  copyFileSync(
-    path,
-    join(
-      args.options.dst,
-      date,
-      basename(path),
-    ),
-  );
+function fill(x: number, length: number): string {
+  return `000000000${x}`.substr(-length);
 }
 
 async function main() {
-  const photos = findPhotos(args.options.src);
+  const dates = new Set<string>();
+  const photos = findPhotos(src).map(p => {
+    const date = statSync(p).birthtime;
+    const dateString = `${fill(date.getFullYear(), 4)}-${fill(date.getMonth() + 1, 2)}-${fill(date.getDate(), 2)}`;
+    dates.add(dateString);
+    return {
+      src: p,
+      dst: join(dst, dateString, basename(p)),
+    };
+  });
+
+  const progress = new ProgressBar("copying [:bar] :current/:total :percent :etas", photos.length);
+  async function copy(fileData: {
+    src: string;
+    dst: string;
+  }) {
+    return new Promise(r =>
+      copyFile(
+        fileData.src,
+        fileData.dst,
+        () => (progress.tick(), r()),
+      ));
+  }
+
+  for (const date of dates) {
+    await mkdirpSync(join(args.options.dst, date));
+  }
   for (const p of photos) {
     copy(p);
   }
