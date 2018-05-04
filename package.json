@@ -1,10 +1,10 @@
 {
   "name": "photo-loader",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "index.js",
   "license": "MIT",
   "bin": {
-    "photo-loader": "bin/index.js"
+    "photo-loader": "./index.js"
   },
   "devDependencies": {
     "@types/argv": "^0.0.4",
