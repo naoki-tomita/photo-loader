@@ -15,21 +15,27 @@ argv.option([{
 	name: "src",
 	short: "s",
 	type: "string",
-	description: "source path",
+  description: "source path",
+  example: `'photo-loader -s /foo/bar'`,
 }, {
   name: "dst",
 	short: "d",
 	type: "string",
-	description: "destination path",
+  description: "destination path",
+  example: `'photo-loader -d /foo/bar'`,
 }, {
   name: "ext",
   short: "e",
   type: "string",
   description: "extension of copy file. joined by comma.",
-  example: `jpg,mov,png`,
+  example: `'photo-loader -e jpg,mov,png'`,
 }]);
 
 const args = argv.run();
+if (!args.options.src || !args.options.ext || !args.options.dst) {
+  argv.help();
+  process.exit();
+}
 const src = args.options.src;
 const exts: string[] = args.options.ext.split(",").map((e: string) => `.${e.toLowerCase()}`);
 const dst = args.options.dst;
